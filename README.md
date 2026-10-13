@@ -5,7 +5,7 @@ Database clients on [Vega](https://github.com/grepjava/vega), ported from [Garud
 | Product | What |
 |---|---|
 | `VegaPool` | `ConnectionPool`: a fair, cancellable pool of connections to one server, any client's |
-| `VegaRedis` | Redis and Valkey: RESP3 (RESP2 for servers before 6), pipelines, transactions, sessions with WATCH, pub/sub, TLS, Unix sockets |
+| `VegaRedis` | Redis and Valkey: RESP3 (RESP2 for servers before 6), pipelines, transactions, sessions with WATCH, pub/sub, TLS, Unix sockets; `RedisCluster` (slot routing, MOVED/ASK) and `RedisSentinelPool` (master discovery and failover) |
 | `VegaRedisProtocol` | Redis's protocol with no sockets: replies parsed and commands written as bytes |
 
 ```swift
@@ -16,8 +16,8 @@ let visits = try await redis.incr("visits:home")
 ```
 
 **Status:** pre-alpha.
-- **Ported:** the shared pool and Redis's single-server client (connection, pool, sessions, pub/sub).
-- **Still to port from Garuda:** Redis Cluster and Sentinel, PostgreSQL (`VegaPostgres`), and SQLite (`VegaSQLite`).
+- **Ported:** the shared pool, and Redis: the single-server client (connection, pool, sessions, pub/sub), Cluster and Sentinel.
+- **Still to port from Garuda:** PostgreSQL (`VegaPostgres`) and SQLite (`VegaSQLite`).
 
 ## TLS
 

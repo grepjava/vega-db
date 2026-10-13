@@ -17,6 +17,9 @@ final class FakeRedis: Sendable {
         /// Bytes to answer with, or nil to say nothing.
         var reply: String?
         var closeAfter = false
+        /// Closes the connection after answering and stops listening, so the
+        /// server is gone rather than merely rude.
+        var goAway = false
     }
 
     private struct State {
@@ -30,12 +33,13 @@ final class FakeRedis: Sendable {
     /// The state the server's tasks share with the test.
     private final class Board: Sendable {
         let state: Mutex<State>
+        /// The accept loop, cancelled to stop listening.
+        let listening = Mutex<Task<Void, Never>?>(nil)
         init(_ script: [Step]) { state = Mutex(State(script: script)) }
     }
 
     let port: Int
     private let board: Board
-    private let server: Task<Void, Never>
 
     /// Listens on a free port of 127.0.0.1. Call on the runtime. With
     /// `answersHello`, HELLO is answered as RESP3 outside the script, for
@@ -45,16 +49,24 @@ final class FakeRedis: Sendable {
         port = try listener.localAddress.port ?? 0
         let board = Board(script)
         self.board = board
-        server = rt.spawn(with: listener) { listener in
+        let server = rt.spawn(with: listener) { listener in
             while true {
                 guard let conn = try? await listener.accept() else { return }
                 board.state.withLock { $0.accepted += 1 }
                 rt.spawn(with: conn) { conn in await FakeRedis.serve(conn, board, answersHello) }
             }
         }
+        board.listening.withLock { $0 = server }
     }
 
-    deinit { server.cancel() }
+    deinit { board.listening.withLock { $0?.cancel() } }
+
+    var address: String { "127.0.0.1:\(port)" }
+
+    /// Replaces the script, for fakes that must know each other's ports.
+    func script(_ steps: [Step]) {
+        board.state.withLock { $0.script = steps; $0.next = 0 }
+    }
 
     var received: [String] { board.state.withLock { $0.received } }
     var mismatches: [String] { board.state.withLock { $0.mismatches } }
@@ -88,12 +100,52 @@ final class FakeRedis: Sendable {
                 out.append(reply)
                 try? await conn.write(out)
             }
+            if step.goAway {
+                board.listening.withLock { $0?.cancel() }
+                return
+            }
             if step.closeAfter { return }
         }
     }
 }
 
 let hello3 = "%1\r\n$5\r\nproto\r\n:3\r\n"
+
+/// A `CLUSTER SLOTS` reply: one range per node, each owned by a master with
+/// no replicas.
+func slotsReply(_ ranges: [(from: Int, to: Int, port: Int)]) -> String {
+    var out = "*\(ranges.count)\r\n"
+    for range in ranges {
+        out += "*3\r\n:\(range.from)\r\n:\(range.to)\r\n"
+        let id = "node\(range.port)"
+        out += "*3\r\n$9\r\n127.0.0.1\r\n:\(range.port)\r\n$\(id.utf8.count)\r\n\(id)\r\n"
+    }
+    return out
+}
+
+/// Runs `body` on a two-worker runtime with the fakes `make` builds there,
+/// and returns what it returned, or "threw <error>", with the fakes.
+func onRuntime<Fakes: Sendable>(_ make: @escaping @Sendable (Runtime) throws -> Fakes,
+                                _ body: @escaping @Sendable (Fakes) async throws -> String) throws -> (String, Fakes) {
+    let rt = Runtime(workers: 2)
+    defer { rt.shutdown() }
+    return try rt.block { () async throws -> (String, Fakes) in
+        let fakes = try make(rt)
+        do {
+            return (try await body(fakes), fakes)
+        } catch {
+            return ("threw \(error)", fakes)
+        }
+    }
+}
+
+/// A configuration for a fake: plaintext, a second to answer.
+func fakeConfiguration(port: Int) -> RedisConfiguration {
+    var configuration = RedisConfiguration(host: "127.0.0.1", port: UInt16(port))
+    configuration.tls = .disable
+    configuration.timeout = .seconds(1)
+    return configuration
+}
 
 /// Runs `body` with a pool against a fake answering `script`, and returns
 /// what it returned, or "threw <error>".
