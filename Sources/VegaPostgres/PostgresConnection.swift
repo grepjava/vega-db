@@ -8,11 +8,6 @@
 // the pool's hand-over.
 //===----------------------------------------------------------------------===//
 
-#if canImport(Glibc)
-import Glibc
-#elseif canImport(Darwin)
-import Darwin
-#endif
 import Vega
 import VegaPool
 import VegaTLS
@@ -39,6 +34,15 @@ enum PostgresLink: ~Copyable {
         case .unix(let s): try await s.write(buffer)
         }
     }
+
+    /// Whether a read would return at once, asked without reading.
+    var hasPendingInput: Bool {
+        switch self {
+        case .tcp(let s): s.hasPendingInput
+        case .tls(let s): s.hasPendingInput
+        case .unix(let s): s.hasPendingInput
+        }
+    }
 }
 
 /// One session with a PostgreSQL server.
@@ -56,9 +60,6 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     private(set) var transactionStatus: PostgresTransactionStatus = .idle
 
     private var link: PostgresLink?
-    /// The socket's descriptor, for looking at an idle connection without
-    /// reading from it.
-    private let fd: Int32
 
     /// A statement kept prepared, by the SQL and the parameter types it was
     /// parsed with: the same SQL with a value of another declared type is
@@ -110,10 +111,9 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     /// the next query.
     private var toClose: [String] = []
 
-    private init(link: consuming PostgresLink, fd: Int32, configuration: PostgresConfiguration,
+    private init(link: consuming PostgresLink, configuration: PostgresConfiguration,
                  parameters: [String: String], processID: Int32, receiving: consuming IOBuffer) {
         self.link = .some(link)
-        self.fd = fd
         self.configuration = configuration
         self.parameters = parameters
         self.processID = processID
@@ -131,9 +131,11 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     /// an idle timeout, a restart -- found now rather than after a statement
     /// is written into it.
     var isReusable: Bool {
-        guard isOpen && transactionStatus == .idle && receiving.isEmpty else { return false }
-        var p = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-        return poll(&p, 1, 0) == 0
+        guard transactionStatus == .idle && receiving.isEmpty else { return false }
+        switch link {
+        case .none: return false
+        case .some(let link): return !link.hasPendingInput
+        }
     }
 
     func close() {
@@ -176,16 +178,13 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     private static func open(_ configuration: PostgresConfiguration,
                              tls: TLSContext?) async throws(PostgresClientError) -> PostgresConnection {
         let link: PostgresLink
-        let fd: Int32
         var encrypted = false
         if let path = configuration.socketPath {
             // A socket carries no TLS: there is no network on it to encrypt,
             // and PostgreSQL will not negotiate it there.
             guard configuration.tls == .disable else { throw .tlsUnavailable }
             do throws(IOError) {
-                let stream = try await UnixStream.connect(path: path)
-                fd = stream.fileDescriptor
-                link = .unix(stream)
+                link = .unix(try await UnixStream.connect(path: path))
             } catch {
                 throw .connect(error)
             }
@@ -196,7 +195,6 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
             } catch {
                 throw .connect(error)
             }
-            fd = stream.fileDescriptor
             if let tls {
                 var request: [UInt8] = []
                 PostgresFrontend.sslRequest(into: &request)
@@ -257,7 +255,7 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
                 guard buffer.isEmpty else {
                     throw .postgres(.unexpectedMessage(buffer.withUnsafeBytes { $0[0] }))
                 }
-                return PostgresConnection(link: link, fd: fd, configuration: configuration,
+                return PostgresConnection(link: link, configuration: configuration,
                                           parameters: startup.parameters, processID: startup.processID,
                                           receiving: buffer)
             }

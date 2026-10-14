@@ -159,7 +159,14 @@ struct RedisIncompleteTests {
             return "answered \(replies.count)"
         }
         #expect(node.mismatches == [])
+        #if os(Windows)
+        // Windows answers a connect to a closed loopback port only after
+        // retrying for about two seconds, past the fake's one-second
+        // timeout. Either way the second slot never ran.
+        #expect(result == "incomplete [1, -] connect mayHaveRun" || result == "incomplete [1, -] timedOut mayHaveRun")
+        #else
         #expect(result == "incomplete [1, -] connect mayHaveRun")
+        #endif
         #expect(node.received.filter { $0.contains(low) }.count == 1, "the answered write is not sent again")
     }
 

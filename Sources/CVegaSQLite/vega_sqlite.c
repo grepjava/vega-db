@@ -1,8 +1,22 @@
 #include "vega_sqlite.h"
 
+#include <stddef.h>
+
+#if defined(_WIN32)
+/* Windows 10 and later ship SQLite as winsqlite3.dll; an application's own
+ * sqlite3.dll beside it is taken first. */
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+typedef HMODULE library;
+static library open_library(const char *name) { return LoadLibraryA(name); }
+static void *symbol(library h, const char *name) { return (void *)GetProcAddress(h, name); }
+#else
 #include <dlfcn.h>
 #include <pthread.h>
-#include <stddef.h>
+typedef void *library;
+static library open_library(const char *name) { return dlopen(name, RTLD_NOW | RTLD_LOCAL); }
+static void *symbol(library h, const char *name) { return dlsym(h, name); }
+#endif
 
 /* SQLITE_TRANSIENT: the library copies the bytes before the call returns. */
 #define TRANSIENT ((void (*)(void *))-1)
@@ -46,26 +60,30 @@ static struct {
     int (*column_bytes)(vsq_stmt *, int);
 } lib;
 
-static pthread_once_t load_once = PTHREAD_ONCE_INIT;
 static int loaded;
 
 static void load(void) {
     static const char *const names[] = {
+#if defined(_WIN32)
+        "sqlite3.dll", "winsqlite3.dll",
+#else
         "libsqlite3.so.0", "libsqlite3.so",
         "/usr/lib/libsqlite3.dylib", "libsqlite3.dylib",
         "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib",
-        "/usr/local/opt/sqlite/lib/libsqlite3.dylib", NULL,
+        "/usr/local/opt/sqlite/lib/libsqlite3.dylib",
+#endif
+        NULL,
     };
-    void *h = NULL;
+    library h = NULL;
     for (const char *const *name = names; *name && !h; name++) {
-        h = dlopen(*name, RTLD_NOW | RTLD_LOCAL);
+        h = open_library(*name);
     }
     if (!h) return;
 
     int complete = 1;
-#define REQUIRE(field, symbol) \
+#define REQUIRE(field, name) \
     do { \
-        lib.field = dlsym(h, symbol); \
+        lib.field = symbol(h, name); \
         if (!lib.field) complete = 0; \
     } while (0)
     REQUIRE(libversion_number, "sqlite3_libversion_number");
@@ -105,17 +123,32 @@ static void load(void) {
     REQUIRE(column_bytes, "sqlite3_column_bytes");
 #undef REQUIRE
     /* 3.37 and later; sqlite3_changes counts to 2^31 before that. */
-    lib.changes64 = dlsym(h, "sqlite3_changes64");
+    lib.changes64 = symbol(h, "sqlite3_changes64");
 
     /* A library built single-threaded has no locking at all, even around its
      * own global state, and connections on different threads would corrupt
-     * it. Garuda uses each connection from one thread at a time, which
+     * it. Each connection is used from one thread at a time, which
      * "multi-thread" mode (threadsafe 2) and "serialized" (1) both allow. */
     if (complete && lib.threadsafe() != 0) loaded = 1;
 }
 
+#if defined(_WIN32)
+static INIT_ONCE load_once = INIT_ONCE_STATIC_INIT;
+static BOOL CALLBACK load_once_callback(PINIT_ONCE once, PVOID parameter, PVOID *context) {
+    (void)once; (void)parameter; (void)context;
+    load();
+    return TRUE;
+}
+#else
+static pthread_once_t load_once = PTHREAD_ONCE_INIT;
+#endif
+
 int vsq_available(void) {
+#if defined(_WIN32)
+    InitOnceExecuteOnce(&load_once, load_once_callback, NULL, NULL);
+#else
     pthread_once(&load_once, load);
+#endif
     return loaded;
 }
 

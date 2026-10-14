@@ -7,11 +7,6 @@
 // owner -- so its state needs no lock, only the pool's hand-over.
 //===----------------------------------------------------------------------===//
 
-#if canImport(Glibc)
-import Glibc
-#elseif canImport(Darwin)
-import Darwin
-#endif
 import Vega
 import VegaPool
 import VegaTLS
@@ -41,6 +36,16 @@ enum RedisLink: ~Copyable {
         case .unixTLS(let s): try await s.write(buffer)
         }
     }
+
+    /// Whether a read would return at once, asked without reading.
+    var hasPendingInput: Bool {
+        switch self {
+        case .tcp(let s): s.hasPendingInput
+        case .tcpTLS(let s): s.hasPendingInput
+        case .unix(let s): s.hasPendingInput
+        case .unixTLS(let s): s.hasPendingInput
+        }
+    }
 }
 
 /// One connection to a Redis server.
@@ -52,9 +57,6 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     let server: [String: String]
 
     private var link: RedisLink?
-    /// The socket's descriptor, for looking at an idle connection without
-    /// reading from it.
-    private let fd: Int32
     private var parser: RedisParser
     private var buffer: IOBuffer
 
@@ -65,10 +67,9 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     private var inMulti = false
     private var watching = false
 
-    private init(link: consuming RedisLink, fd: Int32, configuration: RedisConfiguration,
+    private init(link: consuming RedisLink, configuration: RedisConfiguration,
                  protocolVersion: Int, server: [String: String], parser: RedisParser, buffer: consuming IOBuffer) {
         self.link = .some(link)
-        self.fd = fd
         self.configuration = configuration
         self.protocolVersion = protocolVersion
         self.server = server
@@ -86,9 +87,11 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     /// is it going away -- a timeout, a restart -- found now rather than
     /// after a command is written into it.
     var isReusable: Bool {
-        guard isOpen && isClean else { return false }
-        var p = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-        return poll(&p, 1, 0) == 0
+        guard isClean else { return false }
+        switch link {
+        case .none: return false
+        case .some(let link): return !link.hasPendingInput
+        }
     }
 
     func close() {
@@ -115,11 +118,9 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     private static func open(_ configuration: RedisConfiguration,
                              tls: TLSContext?) async throws(RedisClientError) -> RedisConnection {
         let link: RedisLink
-        let fd: Int32
         do throws(IOError) {
             if let path = configuration.unixSocketPath {
                 let stream = try await UnixStream.connect(path: path)
-                fd = stream.fileDescriptor
                 if let tls {
                     link = .unixTLS(try await TLSStream.connect(stream, serverName: nil, context: tls))
                 } else {
@@ -127,7 +128,6 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
                 }
             } else {
                 let stream = try await TCPStream.connect(host: configuration.host, port: Int(configuration.port))
-                fd = stream.fileDescriptor
                 if let tls {
                     link = .tcpTLS(try await TLSStream.connect(stream, serverName: configuration.host, context: tls))
                 } else {
@@ -163,7 +163,7 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
                 // Nothing may follow unasked: bytes left over would be read
                 // as the first command's reply.
                 guard buffer.isEmpty, !parser.isMidReply else { throw .protocolViolation(.badValue) }
-                return RedisConnection(link: link, fd: fd, configuration: configuration,
+                return RedisConnection(link: link, configuration: configuration,
                                        protocolVersion: handshake.protocolVersion, server: handshake.server,
                                        parser: parser, buffer: buffer)
             }

@@ -2,6 +2,8 @@
 import Glibc
 #elseif canImport(Darwin)
 import Darwin
+#elseif os(Windows)
+import ucrt
 #endif
 import CVegaSQLite
 import Synchronization
@@ -20,13 +22,26 @@ import Vega
 /// threads is a data race whether or not it is got away with.
 private let fileCounter = Atomic<Int>(0)
 
+/// This run's own prefix, so two runs at once never share a file.
+private let runToken = UInt32.random(in: .min ... .max)
+
+/// Where temporary files go: TEMP on Windows, /tmp elsewhere.
+private let temporaryDirectory: String = {
+    #if os(Windows)
+    if let temp = getenv("TEMP") { return String(cString: temp) }
+    return "."
+    #else
+    return "/tmp"
+    #endif
+}()
+
 /// A database path no other test uses, and its removal with its WAL files.
 private final class TemporaryDatabase {
     let path: String
 
     init(_ name: String) {
         let number = fileCounter.wrappingAdd(1, ordering: .relaxed).newValue
-        path = "/tmp/vega-sqlite-\(getpid())-\(number)-\(name).db"
+        path = "\(temporaryDirectory)/vega-sqlite-\(runToken)-\(number)-\(name).db"
         remove()
     }
 
@@ -34,18 +49,23 @@ private final class TemporaryDatabase {
 
     func remove() {
         for suffix in ["", "-wal", "-shm", "-journal"] {
-            _ = unlink(path + suffix)
+            _ = (path + suffix).withCString { _ = removeFile($0) }
         }
     }
+}
+
+/// C's remove(3), which the class's own `remove` hides.
+private func removeFile(_ path: UnsafePointer<CChar>) -> Int32 {
+    remove(path)
 }
 
 /// Which of a database's files exist, for a failure that turns on it.
 private func databaseFiles(_ path: String) -> String {
     var out: [String] = []
     for suffix in ["", "-wal", "-shm"] {
-        let fd = open(path + suffix, O_RDONLY)
-        if fd >= 0 { _ = close(fd) }
-        out.append("\(suffix.isEmpty ? "db" : suffix) \(fd >= 0 ? "there" : "missing")")
+        let file = fopen(path + suffix, "rb")
+        if let file { fclose(file) }
+        out.append("\(suffix.isEmpty ? "db" : suffix) \(file != nil ? "there" : "missing")")
     }
     return out.joined(separator: ", ")
 }

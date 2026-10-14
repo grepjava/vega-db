@@ -1,9 +1,10 @@
 /*
  * SQLite, loaded at run time.
  *
- * The system's libsqlite3 is opened with dlopen the first time it is asked
- * for, so building needs no SQLite headers and a program that never
- * opens a database never loads the library. Each vsq_ function calls the
+ * The system's libsqlite3 -- winsqlite3.dll on Windows -- is loaded the
+ * first time it is asked for, so building needs no SQLite headers and a
+ * program that never opens a database never loads the library. Each vsq_
+ * function calls the
  * library's function of the same name; where the library cannot be loaded,
  * vsq_available says so and nothing else may be called.
  *
