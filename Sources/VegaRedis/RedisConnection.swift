@@ -103,7 +103,7 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     static func connect(_ configuration: RedisConfiguration,
                         tls: TLSContext?) async throws(RedisClientError) -> RedisConnection {
         do {
-            return try await Runtime.timeout(configuration.timeout) { () async throws(RedisClientError) -> RedisConnection in
+            return try await Runtime.timeout(configuration.timeout) { () async throws -> RedisConnection in
                 try await open(configuration, tls: tls)
             }
         } catch let error as RedisClientError {

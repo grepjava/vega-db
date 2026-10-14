@@ -163,7 +163,7 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     static func connect(_ configuration: PostgresConfiguration,
                         tls: TLSContext?) async throws(PostgresClientError) -> PostgresConnection {
         do {
-            return try await Runtime.timeout(configuration.timeout) { () async throws(PostgresClientError) -> PostgresConnection in
+            return try await Runtime.timeout(configuration.timeout) { () async throws -> PostgresConnection in
                 try await open(configuration, tls: tls)
             }
         } catch let error as PostgresClientError {
