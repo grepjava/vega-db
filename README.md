@@ -7,6 +7,7 @@ Database clients on [Vega](https://github.com/grepjava/vega), ported from [Garud
 | `VegaPool` | `ConnectionPool`: a fair, cancellable pool of connections to one server, any client's |
 | `VegaRedis` | Redis and Valkey: RESP3 (RESP2 for servers before 6), pipelines, transactions, sessions with WATCH, pub/sub, TLS, Unix sockets; `RedisCluster` (slot routing, MOVED/ASK) and `RedisSentinelPool` (master discovery and failover) |
 | `VegaRedisProtocol` | Redis's protocol with no sockets: replies parsed and commands written as bytes |
+| `VegaDBTracing` | `DatabaseTracer`: each round trip described in OpenTelemetry's database terms, for an application to turn into spans |
 
 ```swift
 import VegaRedis
@@ -18,6 +19,22 @@ let visits = try await redis.incr("visits:home")
 **Status:** pre-alpha.
 - **Ported:** the shared pool, and Redis: the single-server client (connection, pool, sessions, pub/sub), Cluster and Sentinel.
 - **Still to port from Garuda:** PostgreSQL (`VegaPostgres`) and SQLite (`VegaSQLite`).
+
+## Tracing
+
+Set a configuration's `tracer` to hear about every round trip: a command, a pipeline, a transaction. Each is described in OpenTelemetry's database terms (`db.system.name`, `db.operation.name`, `server.address`), and arguments are never included. The clients depend on no tracing library, so the application bridges the description to its own tracer, such as swift-distributed-tracing. With no tracer set, nothing is described or called.
+
+```swift
+struct Spans: DatabaseTracer {
+    func start(_ describe: () -> DatabaseOperation) -> (any DatabaseSpan)? {
+        guard tracing else { return nil }   // not recording: describe is never built
+        return MySpan(describe())           // MySpan's end() and fail(_:) close it
+    }
+}
+
+var configuration = RedisConfiguration(host: "cache")
+configuration.tracer = Spans()
+```
 
 ## TLS
 

@@ -181,6 +181,28 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     /// the same.
     func send(_ commands: [RedisCommand], timeout: Duration? = nil) async throws(RedisClientError) -> [RedisValue] {
         guard !commands.isEmpty else { return [] }
+        guard let tracer = configuration.tracer,
+              let span = tracer.start({ configuration.describe(commands) }) else {
+            return try await untracedSend(commands, timeout: timeout)
+        }
+        do throws(RedisClientError) {
+            let replies = try await untracedSend(commands, timeout: timeout)
+            // A command the server refused is answered, not failed, at this
+            // level; its caller throws it. A pipeline's refusals are its
+            // commands', each answered in its place.
+            if replies.count == 1, case .error(let refused) = replies[0] {
+                span.fail(RedisClientError.server(refused).failure)
+            } else {
+                span.end()
+            }
+            return replies
+        } catch {
+            span.fail(error.failure)
+            throw error
+        }
+    }
+
+    private func untracedSend(_ commands: [RedisCommand], timeout: Duration?) async throws(RedisClientError) -> [RedisValue] {
         var bytes: [UInt8] = []
         bytes.reserveCapacity(64 * commands.count)
         for command in commands { command.write(into: &bytes) }

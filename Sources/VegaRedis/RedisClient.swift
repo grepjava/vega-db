@@ -9,6 +9,8 @@
 import Vega
 // Its values and commands are part of this API, so `import VegaRedis` is enough.
 @_exported import VegaRedisProtocol
+// So is the tracing hook a configuration takes.
+@_exported import VegaDBTracing
 
 /// Where a Redis server is and how to reach it.
 public struct RedisConfiguration: Sendable {
@@ -40,6 +42,9 @@ public struct RedisConfiguration: Sendable {
     /// The largest string a reply may carry, and the most elements in one.
     public var maxBulkBytes = 64 * 1024 * 1024
     public var maxReplyElements = 1_000_000
+    /// Told of every round trip -- a command, a pipeline, a transaction --
+    /// with its command's name and none of its arguments.
+    public var tracer: (any DatabaseTracer)? = nil
 
     public init(host: String, port: UInt16 = 6379, password: String? = nil) {
         self.host = host
@@ -60,6 +65,26 @@ public struct RedisConfiguration: Sendable {
         limits.maxBulkBytes = maxBulkBytes
         limits.maxElements = maxReplyElements
         return limits
+    }
+}
+
+extension RedisConfiguration {
+    /// A round trip, for a tracer: named for its command, or PIPELINE for
+    /// several sent together. Arguments -- keys and values alike -- are not
+    /// recorded.
+    func describe(_ commands: [RedisCommand]) -> DatabaseOperation {
+        let name = commands.count == 1 ? commands[0].name : "PIPELINE"
+        var operation = DatabaseOperation(system: "redis", name: name)
+        operation.operation = name
+        if commands.count > 1 { operation.batchSize = commands.count }
+        operation.namespace = String(database)
+        if let unixSocketPath {
+            operation.serverAddress = unixSocketPath
+        } else {
+            operation.serverAddress = host
+            operation.serverPort = Int(port)
+        }
+        return operation
     }
 }
 
@@ -155,6 +180,17 @@ extension RedisClientError {
         case .closed, .timedOut, .cancelled: return .unknownOutcome(self)
         default: return self
         }
+    }
+}
+
+extension RedisClientError {
+    /// The failure, for a tracer: with the server's code -- WRONGTYPE, MOVED
+    /// -- when it was the server that refused.
+    var failure: DatabaseFailure {
+        if case .server(let refused) = self, !refused.code.isEmpty {
+            return DatabaseFailure(self, type: refused.code, statusCode: refused.code)
+        }
+        return DatabaseFailure(self, type: DatabaseFailure.caseName(of: self))
     }
 }
 
