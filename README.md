@@ -7,6 +7,9 @@ Database clients on [Vega](https://github.com/grepjava/vega), ported from [Garud
 | `VegaPool` | `ConnectionPool`: a fair, cancellable pool of connections to one server, any client's |
 | `VegaRedis` | Redis and Valkey: RESP3 (RESP2 for servers before 6), pipelines, transactions, sessions with WATCH, pub/sub, TLS, Unix sockets; `RedisCluster` (slot routing, MOVED/ASK) and `RedisSentinelPool` (master discovery and failover) |
 | `VegaRedisProtocol` | Redis's protocol with no sockets: replies parsed and commands written as bytes |
+| `VegaPostgres` | PostgreSQL: SCRAM and TLS, prepared-statement caching, binary results, rows decoded into `Decodable` types, transactions, COPY in and out, LISTEN/NOTIFY, connection URLs, migrations |
+| `VegaPostgresProtocol` | PostgreSQL's wire protocol with no sockets: startup, SCRAM-SHA-256, queries, COPY, binary and text values |
+| `VegaSQLite` | SQLite through the system's libsqlite3 (loaded at run time): a writer and pooled readers, statements on Vega's blocking pool, migrations |
 | `VegaDBTracing` | `DatabaseTracer`: each round trip described in OpenTelemetry's database terms, for an application to turn into spans |
 
 ```swift
@@ -16,9 +19,18 @@ let redis = RedisPool(RedisConfiguration(host: "cache"))
 let visits = try await redis.incr("visits:home")
 ```
 
+```swift
+import VegaPostgres
+
+struct User: Decodable { let id: Int; let name: String }
+
+let db = PostgresPool(try PostgresConfiguration(url: "postgres://app:secret@db/shop"))
+let user = try await db.first(User.self, "select id, name from users where id = $1", 42)
+```
+
 **Status:** pre-alpha.
-- **Ported:** the shared pool, and Redis: the single-server client (connection, pool, sessions, pub/sub), Cluster and Sentinel.
-- **Still to port from Garuda:** PostgreSQL (`VegaPostgres`) and SQLite (`VegaSQLite`).
+- **Ported:** the shared pool; Redis (single server, Cluster, Sentinel); PostgreSQL; SQLite.
+- **Garuda's own types stay in Garuda:** its `UUID`, `Timestamp` and `PostgresJSON`, and the `@PostgresRow` macro. Here a uuid or timestamptz column reads as `PostgresUUID` or `PostgresTimestamp`, and `PostgresCellConvertible` and `SQLiteCellConvertible` let an application's own type decode from a cell.
 
 ## Tracing
 
@@ -38,7 +50,7 @@ configuration.tracer = Spans()
 
 ## TLS
 
-`VegaRedis` uses VegaTLS, which runs on the system's OpenSSL by default. Enable this package's `BoringSSL` trait to use Vega's vendored BoringSSL instead. The trait passes through to Vega.
+`VegaRedis` and `VegaPostgres` use VegaTLS, which runs on the system's OpenSSL by default. Enable this package's `BoringSSL` trait to use Vega's vendored BoringSSL instead. The trait passes through to Vega.
 
 ## Build
 
