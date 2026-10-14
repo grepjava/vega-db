@@ -10,6 +10,7 @@ let package = Package(
         .library(name: "VegaPool", targets: ["VegaPool"]),
         .library(name: "VegaRedis", targets: ["VegaRedis"]),
         .library(name: "VegaPostgres", targets: ["VegaPostgres"]),
+        .library(name: "VegaSQLite", targets: ["VegaSQLite"]),
         .library(name: "VegaDBTracing", targets: ["VegaDBTracing"]),
     ],
     // Vega's TLS library trait passes through: `traits: ["BoringSSL"]` on this
@@ -52,6 +53,14 @@ let package = Package(
                                .product(name: "Vega", package: "vega"),
                                .product(name: "VegaTLS", package: "vega")],
                 swiftSettings: swiftSettings),
+        // The system's libsqlite3, opened with dlopen: no headers to build.
+        .target(name: "CVegaSQLite", linkerSettings: [.linkedLibrary("dl", .when(platforms: [.linux]))]),
+        .target(name: "VegaSQLite",
+                dependencies: ["CVegaSQLite", "VegaPool", .product(name: "Vega", package: "vega")],
+                swiftSettings: swiftSettings),
+        .testTarget(name: "VegaSQLiteTests",
+                    dependencies: ["VegaSQLite", "CVegaSQLite", "VegaPool", .product(name: "Vega", package: "vega")],
+                    swiftSettings: swiftSettings),
         .testTarget(name: "VegaPostgresProtocolTests", dependencies: ["VegaPostgresProtocol"],
                     swiftSettings: swiftSettings),
         .testTarget(name: "VegaPostgresTests",
