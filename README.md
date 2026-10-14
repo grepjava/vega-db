@@ -59,7 +59,13 @@ swift build --scratch-path ~/.cache/vega-db-build
 swift test  --scratch-path ~/.cache/vega-db-build
 ```
 
-Vega is a path dependency (`../vega`) while the two are developed together.
+vega-db takes [Vega](https://github.com/grepjava/vega) 0.2 from GitHub. To build against a local checkout instead, run `swift package edit vega --path ../vega`.
+
+In an application:
+
+```swift
+.package(url: "https://github.com/grepjava/vega-db.git", .upToNextMinor(from: "0.1.0")),
+```
 
 ## Integration tests
 

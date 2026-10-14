@@ -21,9 +21,8 @@ let package = Package(
         .default(enabledTraits: ["OpenSSL"]),
     ],
     dependencies: [
-        // A path while both are developed together; the URL once vega-db is
-        // published.
-        .package(path: "../vega", traits: [
+        // upToNextMinor: Vega is below 1.0, where a minor release may break.
+        .package(url: "https://github.com/grepjava/vega.git", .upToNextMinor(from: "0.2.0"), traits: [
             .trait(name: "OpenSSL", condition: .when(traits: ["OpenSSL"])),
             .trait(name: "BoringSSL", condition: .when(traits: ["BoringSSL"])),
         ]),
@@ -46,11 +45,13 @@ let package = Package(
         .target(name: "VegaRedis",
                 dependencies: ["VegaPool", "VegaRedisProtocol", "VegaDBTracing",
                                .product(name: "Vega", package: "vega"),
+                               .product(name: "VegaIO", package: "vega"),
                                .product(name: "VegaTLS", package: "vega")],
                 swiftSettings: swiftSettings),
         .target(name: "VegaPostgres",
                 dependencies: ["VegaPool", "VegaPostgresProtocol", "VegaDBTracing",
                                .product(name: "Vega", package: "vega"),
+                               .product(name: "VegaIO", package: "vega"),
                                .product(name: "VegaTLS", package: "vega")],
                 swiftSettings: swiftSettings),
         // The system's libsqlite3, opened with dlopen: no headers to build.

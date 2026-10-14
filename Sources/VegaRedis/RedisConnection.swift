@@ -8,6 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 import Vega
+import VegaIO
 import VegaPool
 import VegaTLS
 import VegaRedisProtocol
