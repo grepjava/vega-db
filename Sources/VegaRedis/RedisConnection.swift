@@ -186,13 +186,11 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
         for command in commands { command.write(into: &bytes) }
         let written = bytes
         let outcome = await bounded(timeout ?? configuration.timeout) { () async -> SendOutcome in
-            await self.exchange(written, commands)
+            await exchange(written, commands)
         }
         switch outcome {
         case .replies(let replies):
             return replies
-        case .interrupted:
-            preconditionFailure("bounded resolves interruptions")
         case .failed(let replies, let failure):
             // A command half answered leaves a stream nobody can pick up.
             close()
@@ -219,7 +217,6 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
         switch outcome {
         case .replies(let values): return values[0]
         case .failed(_, let error): throw error
-        case .interrupted: preconditionFailure("bounded resolves interruptions")
         }
     }
 
@@ -245,8 +242,6 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     private enum SendOutcome: Sendable {
         case replies([RedisValue])
         case failed([RedisValue], RedisClientError)
-        /// Cancelled part-way, by the deadline or the caller.
-        case interrupted([RedisValue])
     }
 
     private func exchange(_ bytes: [UInt8], _ commands: [RedisCommand]) async -> SendOutcome {
@@ -272,26 +267,14 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
         }
     }
 
-    /// Runs `body` with a deadline. Past it the body is cancelled, and its
-    /// failure reads as a timeout -- or as cancelled, when it was the caller
-    /// that was.
+    /// Runs `body` with a deadline on its reads and writes. Past it the one
+    /// waiting gives up, and fails as `timedOut`.
+    ///
+    /// Not `Runtime.timeout`: that runs the body as a child task, which
+    /// costs more than the rest of a command's work on this side.
     private func bounded(_ timeout: Duration,
-                         _ body: @escaping @Sendable () async -> SendOutcome) async -> SendOutcome {
-        let outcome: SendOutcome
-        do {
-            outcome = try await Runtime.timeout(timeout) { () async -> SendOutcome in
-                let outcome = await body()
-                // A cancelled read or write fails as the socket's error; it
-                // was the cancellation.
-                if case .failed(let replies, _) = outcome, Task.isCancelled { return .interrupted(replies) }
-                return outcome
-            }
-        } catch {
-            outcome = .interrupted([])
-        }
-        guard case .interrupted(let replies) = outcome else { return outcome }
-        let why: RedisClientError = Task.isCancelled ? .cancelled : .timedOut
-        return .failed(replies, why.afterSending())
+                         _ body: () async -> SendOutcome) async -> SendOutcome {
+        await Runtime.withIODeadline(timeout, body)
     }
 
     /// Keeps track of what a command did to the session.
@@ -381,7 +364,11 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     }
 
     private static func map(_ error: IOError) -> RedisClientError {
-        .closed
+        switch error {
+        case .timedOut: .timedOut
+        case .cancelled: .cancelled
+        default: .closed
+        }
     }
 }
 

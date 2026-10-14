@@ -99,6 +99,30 @@ struct RedisIncompleteTests {
         #expect(result == "incomplete [1, -] unknownOutcome mayHaveRun")
     }
 
+    /// A server that answers the first of two commands and then says
+    /// nothing. The wait gives up at the deadline; what was answered is kept.
+    @Test func aReplyThatNeverComesTimesOut() throws {
+        let start = ContinuousClock.now
+        let (result, node) = try onRuntime({ rt in
+            try FakeRedis(rt, [.init(expect: "INCR", reply: ":1\r\n")], answersHello: true)
+        }) { (node: FakeRedis) async -> String in
+            var configuration = fakeConfiguration(port: node.port)
+            configuration.timeout = .milliseconds(50)
+            let pool = RedisPool(configuration, maxConnections: 1)
+            defer { pool.close() }
+            do throws(RedisClientError) {
+                _ = try await pool.pipeline([RedisCommand("INCR", "a"), RedisCommand("INCR", "b")])
+                return "answered"
+            } catch {
+                return describe(error) + (error.cause == .timedOut ? " timedOut" : "")
+            }
+        }
+        let waited = start.duration(to: .now)
+        #expect(node.mismatches == [])
+        #expect(result == "incomplete [1, -] unknownOutcome mayHaveRun timedOut")
+        #expect(waited < .seconds(1), "waited \(waited)")
+    }
+
     /// A transaction is one thing. A lost EXEC reply says nothing about what
     /// ran, and MULTI's OK is not an answer the caller asked for.
     @Test func aTransactionIsNeverPartlyAnswered() throws {
