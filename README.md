@@ -31,3 +31,22 @@ swift test  --scratch-path ~/.cache/vega-db-build
 ```
 
 Vega is a path dependency (`../vega`) while the two are developed together.
+
+## Integration tests
+
+The unit suite needs no server: scripted fake servers stand in for Redis, a cluster and sentinels. The integration suites run against real ones, and each is skipped unless its variable is set. `scripts/redis-test-servers.sh` starts everything they need in one Docker container (Docker Desktop works too):
+
+```sh
+eval "$(scripts/redis-test-servers.sh up)"   # one server, a 3+3 cluster, a master, a replica, 3 sentinels
+swift test --scratch-path ~/.cache/vega-db-build
+scripts/redis-test-servers.sh down
+```
+
+| Variable | Value | Suite |
+|---|---|---|
+| `VEGA_REDIS` | `host:port:password` | one server: commands, transactions, ACL, pub/sub, limits |
+| `VEGA_REDIS_SOCKET` | a unix socket on that server | the unix-socket test; set by the script only where the engine shares the filesystem (not Docker Desktop) |
+| `VEGA_REDIS_CLUSTER` | `host:port:password` of any node | the cluster, including a failover it is asked to do |
+| `VEGA_REDIS_SENTINEL` | `host:port:master:password` | sentinel discovery and a failover |
+
+The servers listen on 127.0.0.1 ports 46001–46006 and 46379–46392, outside the ranges Windows reserves for Hyper-V. The failover tests leave the promoted replicas as masters. The other tests don't depend on which node is master, so the suites can be run again without restarting the servers.
