@@ -33,6 +33,11 @@ let package = Package(
         // RESP2/RESP3: replies parsed and commands written as bytes, with no
         // sockets. From Garuda's GarudaRedis.
         .target(name: "VegaRedisProtocol", swiftSettings: swiftSettings),
+        // PostgreSQL's wire protocol, startup and SCRAM, COPY, and binary and
+        // text values, with no sockets. From Garuda's GarudaPostgres.
+        .target(name: "VegaPostgresProtocol",
+                dependencies: [.product(name: "VegaTLS", package: "vega")],
+                swiftSettings: swiftSettings),
         // What a client tells a tracer about each round trip, in
         // OpenTelemetry's database terms, with no tracer's API.
         .target(name: "VegaDBTracing", swiftSettings: swiftSettings),
@@ -41,6 +46,8 @@ let package = Package(
                                .product(name: "Vega", package: "vega"),
                                .product(name: "VegaTLS", package: "vega")],
                 swiftSettings: swiftSettings),
+        .testTarget(name: "VegaPostgresProtocolTests", dependencies: ["VegaPostgresProtocol"],
+                    swiftSettings: swiftSettings),
         .testTarget(name: "VegaPoolTests",
                     dependencies: ["VegaPool", .product(name: "Vega", package: "vega")],
                     swiftSettings: swiftSettings),
