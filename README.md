@@ -59,12 +59,12 @@ swift build --scratch-path ~/.cache/vega-db-build
 swift test  --scratch-path ~/.cache/vega-db-build
 ```
 
-vega-db takes [Vega](https://github.com/grepjava/vega) 0.2 from GitHub. To build against a local checkout instead, run `swift package edit vega --path ../vega`.
+vega-db takes [Vega](https://github.com/grepjava/vega) 0.4 from GitHub. To build against a local checkout instead, set `VEGA_PATH` to it (`VEGA_PATH=../vega swift build`). Like Vega, vega-db builds with `NonisolatedNonsendingByDefault`: its async functions run on the caller's executor.
 
 In an application:
 
 ```swift
-.package(url: "https://github.com/grepjava/vega-db.git", .upToNextMinor(from: "0.1.0")),
+.package(url: "https://github.com/grepjava/vega-db.git", .upToNextMinor(from: "0.2.0")),
 ```
 
 ## Integration tests

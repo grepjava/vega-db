@@ -1,7 +1,24 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-let swiftSettings: [SwiftSetting] = [.swiftLanguageMode(.v6)]
+// Nonsending by default, as Vega is: an async function runs on its caller's
+// executor, so returning from one is no hop, which on Vega costs a lock.
+let swiftSettings: [SwiftSetting] = [
+    .swiftLanguageMode(.v6),
+    .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
+]
+
+let vegaTraits: Set<Package.Dependency.Trait> = [
+    .init(name: "OpenSSL", condition: .when(traits: ["OpenSSL"])),
+    .init(name: "BoringSSL", condition: .when(traits: ["BoringSSL"])),
+]
+
+/// Vega, by version; or, with VEGA_PATH set, a local checkout -- for working
+/// on both before a Vega release has what this package needs.
+// upToNextMinor: Vega is below 1.0, where a minor release may break.
+let vegaPackage: Package.Dependency = Context.environment["VEGA_PATH"].map {
+    .package(path: $0, traits: vegaTraits)
+} ?? .package(url: "https://github.com/grepjava/vega.git", .upToNextMinor(from: "0.4.0"), traits: vegaTraits)
 
 let package = Package(
     name: "VegaDB",
@@ -21,11 +38,7 @@ let package = Package(
         .default(enabledTraits: ["OpenSSL"]),
     ],
     dependencies: [
-        // upToNextMinor: Vega is below 1.0, where a minor release may break.
-        .package(url: "https://github.com/grepjava/vega.git", .upToNextMinor(from: "0.2.0"), traits: [
-            .trait(name: "OpenSSL", condition: .when(traits: ["OpenSSL"])),
-            .trait(name: "BoringSSL", condition: .when(traits: ["BoringSSL"])),
-        ]),
+        vegaPackage,
     ],
     targets: [
         // Connections to a server, shared by tasks on any worker.
