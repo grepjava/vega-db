@@ -142,12 +142,13 @@ public final class ConnectionPool<Connection: PoolableConnection, Failure: Error
 
     private func takePermit() async throws(Failure) {
         if permits.tryAcquire() { return }
-        let permits = self.permits
-        do {
-            try await Runtime.timeout(acquireTimeout) { try await permits.acquire() }
-        } catch is TimeoutError {
+        // Not `Runtime.timeout`: that runs the wait as a child task in a
+        // group of its own, on every acquire the pool can't serve at once.
+        do throws(AcquireError) {
+            try await permits.acquire(timeout: acquireTimeout)
+        } catch .timedOut {
             throw failure(.timedOut)
-        } catch AcquireError.closed {
+        } catch .closed {
             throw failure(.closed)
         } catch {
             throw failure(.cancelled)
