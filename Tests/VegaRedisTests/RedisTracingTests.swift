@@ -63,14 +63,23 @@ struct RedisTracingTests {
         }
     }
 
-    @Test func aConfigurationStartsWithTheInstalledTracer() {
+    @Test func aPoolWhoseConfigurationNamesNoTracerTakesTheInstalledOne() {
         let tracer = RecordingTracer()
-        #expect(RedisConfiguration(host: "cache").tracer == nil)
+        let own = RecordingTracer()
+        // Made before anything was installed, as a configuration often is.
+        let configuration = RedisConfiguration(host: "cache")
+        var naming = configuration
+        naming.tracer = own
         DatabaseTracing.installed = tracer
-        let made = RedisConfiguration(host: "cache")
+        let pool = RedisPool(configuration)
+        let named = RedisPool(naming)
         DatabaseTracing.installed = nil
-        #expect(made.tracer as? RecordingTracer === tracer)
-        #expect(RedisConfiguration(host: "cache").tracer == nil)
+        let untraced = RedisPool(configuration)
+        defer { pool.close(); named.close(); untraced.close() }
+        #expect(configuration.tracer == nil)
+        #expect(pool.configuration.tracer as? RecordingTracer === tracer)
+        #expect(named.configuration.tracer as? RecordingTracer === own)
+        #expect(untraced.configuration.tracer == nil)
     }
 
     @Test func aCommandIsNamedForItself() throws {

@@ -44,7 +44,7 @@ public struct RedisConfiguration: Sendable {
     public var maxReplyElements = 1_000_000
     /// Told of every round trip -- a command, a pipeline, a transaction --
     /// with its command's name and none of its arguments.
-    public var tracer: (any DatabaseTracer)? = DatabaseTracing.installed
+    public var tracer: (any DatabaseTracer)? = nil
 
     public init(host: String, port: UInt16 = 6379, password: String? = nil) {
         self.host = host
@@ -220,5 +220,15 @@ extension RedisReplay {
         case .nothing: return false
         case .reads: return RedisReads.only(commands)
         }
+    }
+}
+
+extension RedisConfiguration {
+    /// This configuration, with `DatabaseTracing.installed` as its tracer
+    /// when it names none.
+    var tracedByDefault: RedisConfiguration {
+        var configuration = self
+        configuration.tracer = DatabaseTracing.resolve(tracer)
+        return configuration
     }
 }

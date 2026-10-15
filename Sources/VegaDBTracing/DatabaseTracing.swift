@@ -11,8 +11,8 @@
 //     var configuration = RedisConfiguration(host: "cache")
 //     configuration.tracer = MyTracer()
 //
-// or, for every configuration made from then on, `DatabaseTracing.installed`:
-// a framework that traces sets it once, before the application makes its
+// or, for every client that names none, `DatabaseTracing.installed`: a
+// framework that traces sets it once, before the application makes its
 // pools, and every client is traced without being told.
 //
 // A client with no tracer builds no description and calls nothing. One with
@@ -96,15 +96,20 @@ extension DatabaseFailure {
     }
 }
 
-/// The tracer a configuration starts with.
+/// The tracer a client uses when its configuration names none.
 public enum DatabaseTracing {
     private static let current = Mutex<(any DatabaseTracer)?>(nil)
 
-    /// What `tracer` is in a `PostgresConfiguration` or `RedisConfiguration`
-    /// made from now on; nil, the default, traces nothing. Read once, when a
-    /// configuration is made, never per round trip.
+    /// What a pool, or a connection, made from now on traces with when its
+    /// configuration's `tracer` is nil; nil, the default, traces nothing.
+    /// Read when one is made, never per round trip.
     public static var installed: (any DatabaseTracer)? {
         get { current.withLock { $0 } }
         set { current.withLock { $0 = newValue } }
+    }
+
+    /// `own`, or the installed tracer when it is nil.
+    public static func resolve(_ own: (any DatabaseTracer)?) -> (any DatabaseTracer)? {
+        own ?? installed
     }
 }

@@ -27,6 +27,7 @@ public final class RedisPool: RedisCommandSender, Sendable {
 
     /// `acquireTimeout` defaults to the configuration's `timeout`.
     public init(_ configuration: RedisConfiguration, maxConnections: Int = 8, acquireTimeout: Duration? = nil) {
+        let configuration = configuration.tracedByDefault
         let tls = TLSSetup(configuration)
         self.configuration = configuration
         self.tls = tls

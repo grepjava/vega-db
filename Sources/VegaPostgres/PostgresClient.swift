@@ -50,8 +50,9 @@ public struct PostgresConfiguration: Sendable {
     /// transaction-pooling proxy such as PgBouncer, where the next statement
     /// may reach a server session that never saw the first.
     public var statementCacheCapacity = 256
-    /// Told of every statement, with its SQL and none of its values.
-    public var tracer: (any DatabaseTracer)? = DatabaseTracing.installed
+    /// Told of every statement, with its SQL and none of its values. Nil
+    /// takes `DatabaseTracing.installed` as the pool is made.
+    public var tracer: (any DatabaseTracer)? = nil
 
     public init(host: String, port: UInt16 = 5432, user: String, password: String,
                 database: String? = nil) {
@@ -176,5 +177,15 @@ extension Optional where Wrapped == any DatabaseSpan {
         case .success: span.end()
         case .failure(let error): span.fail(error.failure)
         }
+    }
+}
+
+extension PostgresConfiguration {
+    /// This configuration, with `DatabaseTracing.installed` as its tracer
+    /// when it names none.
+    var tracedByDefault: PostgresConfiguration {
+        var configuration = self
+        configuration.tracer = DatabaseTracing.resolve(tracer)
+        return configuration
     }
 }

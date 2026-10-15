@@ -115,6 +115,8 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     private init(link: consuming PostgresLink, configuration: PostgresConfiguration,
                  parameters: [String: String], processID: Int32, receiving: consuming IOBuffer) {
         self.link = .some(link)
+        var configuration = configuration
+        configuration.tracer = DatabaseTracing.resolve(configuration.tracer)
         self.configuration = configuration
         self.parameters = parameters
         self.processID = processID

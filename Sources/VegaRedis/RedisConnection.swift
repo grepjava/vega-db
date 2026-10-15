@@ -71,6 +71,8 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     private init(link: consuming RedisLink, configuration: RedisConfiguration,
                  protocolVersion: Int, server: [String: String], parser: RedisParser, buffer: consuming IOBuffer) {
         self.link = .some(link)
+        var configuration = configuration
+        configuration.tracer = DatabaseTracing.resolve(configuration.tracer)
         self.configuration = configuration
         self.protocolVersion = protocolVersion
         self.server = server
