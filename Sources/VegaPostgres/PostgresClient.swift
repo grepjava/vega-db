@@ -51,7 +51,7 @@ public struct PostgresConfiguration: Sendable {
     /// may reach a server session that never saw the first.
     public var statementCacheCapacity = 256
     /// Told of every statement, with its SQL and none of its values.
-    public var tracer: (any DatabaseTracer)? = nil
+    public var tracer: (any DatabaseTracer)? = DatabaseTracing.installed
 
     public init(host: String, port: UInt16 = 5432, user: String, password: String,
                 database: String? = nil) {

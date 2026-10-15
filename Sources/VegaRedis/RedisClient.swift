@@ -44,7 +44,7 @@ public struct RedisConfiguration: Sendable {
     public var maxReplyElements = 1_000_000
     /// Told of every round trip -- a command, a pipeline, a transaction --
     /// with its command's name and none of its arguments.
-    public var tracer: (any DatabaseTracer)? = nil
+    public var tracer: (any DatabaseTracer)? = DatabaseTracing.installed
 
     public init(host: String, port: UInt16 = 6379, password: String? = nil) {
         self.host = host

@@ -63,6 +63,16 @@ struct RedisTracingTests {
         }
     }
 
+    @Test func aConfigurationStartsWithTheInstalledTracer() {
+        let tracer = RecordingTracer()
+        #expect(RedisConfiguration(host: "cache").tracer == nil)
+        DatabaseTracing.installed = tracer
+        let made = RedisConfiguration(host: "cache")
+        DatabaseTracing.installed = nil
+        #expect(made.tracer as? RecordingTracer === tracer)
+        #expect(RedisConfiguration(host: "cache").tracer == nil)
+    }
+
     @Test func aCommandIsNamedForItself() throws {
         let tracer = RecordingTracer()
         let (result, fake) = try run([.init(expect: "GET", reply: "$2\r\nhi\r\n")], tracer: tracer) { pool in
