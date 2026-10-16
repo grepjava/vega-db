@@ -111,23 +111,22 @@ public protocol PostgresReadable {
 /// The conformance is kept rather than a yes or no, so that finding it again
 /// is one dictionary hit instead of a second trip through the runtime.
 enum PostgresFastPath {
-    private static let readers = Mutex<[ObjectIdentifier: (any PostgresReadable.Type)?]>([:])
+    private static let readers = TypeAnswers<(any PostgresReadable.Type)?>()
 
     static func reader(for type: Any.Type) -> (any PostgresReadable.Type)? {
-        let key = ObjectIdentifier(type)
-        return readers.withLock { known in
-            if let answer = known[key] { return answer }
-            let answer = type as? any PostgresReadable.Type
-            known[key] = answer
-            return answer
-        }
+        readers.answer(for: type) { $0 as? any PostgresReadable.Type }
     }
-}
 
-extension PostgresReadable {
-    /// Reads one row through the conformance, from a metatype the caller only
-    /// knows as `any PostgresReadable.Type`.
-    static func readRow(_ reader: PostgresRowReader) throws -> Self {
-        try Self(row: reader)
+    /// Reads one row as `Row` through `reader`, the conformance
+    /// `reader(for: Row.self)` found: the same type, so the value is taken as
+    /// it is rather than cast through the runtime on every row.
+    static func read<Row>(_ reader: any PostgresReadable.Type, _ cursor: PostgresRowReader,
+                          as _: Row.Type) throws -> Row {
+        func open<R: PostgresReadable>(_: R.Type) throws -> Row {
+            precondition(R.self == Row.self, "a row reader for another type")
+            let row = try R(row: cursor)
+            return withUnsafePointer(to: row) { UnsafeRawPointer($0).assumingMemoryBound(to: Row.self).pointee }
+        }
+        return try open(reader)
     }
 }

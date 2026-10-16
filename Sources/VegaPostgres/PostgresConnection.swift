@@ -58,7 +58,14 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     /// notification this session sent carries as its sender.
     let processID: Int32
     /// As the last ReadyForQuery reported it.
-    private(set) var transactionStatus: PostgresTransactionStatus = .idle
+    private(set) var transactionStatus: PostgresTransactionStatus = .idle {
+        didSet { readyAt = ContinuousClock.now }
+    }
+    /// When the server last said it was ready for a query: it was there then.
+    private var readyAt = ContinuousClock.now
+    /// How recently the server must have answered for `isReusable` to take
+    /// it as still there without asking the socket.
+    static let answeredRecently: Duration = .milliseconds(100)
 
     private var link: PostgresLink?
 
@@ -132,12 +139,18 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     /// Closing it makes the server roll back. And anything arriving on a
     /// connection nobody was using is almost always the server going away --
     /// an idle timeout, a restart -- found now rather than after a statement
-    /// is written into it.
+    /// is written into it. Asking the socket is a system call, and the pool
+    /// asks twice a statement (on release, and on the next acquire), so a
+    /// connection the server answered within `answeredRecently` is taken as
+    /// it is: under load that is every one, and a server going away in that
+    /// window is found by the statement, as it would be a moment later anyway.
     var isReusable: Bool {
         guard transactionStatus == .idle && receiving.isEmpty else { return false }
         switch link {
         case .none: return false
-        case .some(let link): return !link.hasPendingInput
+        case .some(let link):
+            if ContinuousClock.now - readyAt < Self.answeredRecently { return true }
+            return !link.hasPendingInput
         }
     }
 

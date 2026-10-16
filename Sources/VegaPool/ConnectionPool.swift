@@ -1,8 +1,8 @@
 //===----------------------------------------------------------------------===//
 // Connections to one server, shared by tasks on any worker.
 //
-// A semaphore holds the pool's capacity and a locked stack its idle
-// connections. A task takes a permit -- at once if one is free and nobody is
+// A semaphore holds the pool's capacity and locked stacks, one for each
+// worker that gives connections back, its idle connections. A task takes a permit -- at once if one is free and nobody is
 // queued, else in FIFO order, up to the acquire timeout -- then an idle
 // connection, or opens one. Releasing pushes the connection back before the
 // permit, so the task the permit wakes finds it.
@@ -51,7 +51,16 @@ public final class ConnectionPool<Connection: PoolableConnection, Failure: Error
     public let acquireTimeout: Duration
 
     private let permits: Semaphore
-    private let idle = Mutex<[Connection]>([])
+    /// Idle connections, a stack for each worker that releases them: the
+    /// worker giving one back pushes to its own, and the task its permit
+    /// wakes, which resumes on that worker, pops from it. With one stack for
+    /// every worker, each release and acquire met the other workers at the
+    /// lock, and a contended Mutex is a futex call each way.
+    private let idle: [IdleStack]
+    private final class IdleStack: Sendable {
+        let connections = Mutex<[Connection]>([])
+    }
+    private static var stacks: Int { 16 }
     private let closed = Atomic<Bool>(false)
     private let connect: @Sendable () async throws(Failure) -> Connection
     private let failure: @Sendable (PoolError) -> Failure
@@ -63,6 +72,7 @@ public final class ConnectionPool<Connection: PoolableConnection, Failure: Error
         self.maxConnections = maxConnections
         self.acquireTimeout = acquireTimeout
         self.permits = Semaphore(permits: maxConnections)
+        self.idle = (0..<Self.stacks).map { _ in IdleStack() }
         self.connect = connect
         self.failure = failure
     }
@@ -114,7 +124,7 @@ public final class ConnectionPool<Connection: PoolableConnection, Failure: Error
     /// Gives back a connection from `acquire`.
     public func release(_ connection: Connection) {
         if !closed.load(ordering: .acquiring) && connection.isReusable {
-            idle.withLock { $0.append(connection) }
+            idle[home].connections.withLock { $0.append(connection) }
             // Closed in between: the close may have missed it.
             if closed.load(ordering: .acquiring) { drainIdle() }
         } else {
@@ -135,7 +145,7 @@ public final class ConnectionPool<Connection: PoolableConnection, Failure: Error
 
     /// For tests and metrics: idle connections, and connections in use or
     /// being opened.
-    public var idleCount: Int { idle.withLock { $0.count } }
+    public var idleCount: Int { idle.reduce(0) { n, stack in n + stack.connections.withLock { $0.count } } }
     public var inUseCount: Int { maxConnections - permits.availablePermits }
 
     // MARK: -
@@ -155,15 +165,28 @@ public final class ConnectionPool<Connection: PoolableConnection, Failure: Error
         }
     }
 
+    /// The stack of the worker running the caller (the first, off a worker).
+    private var home: Int { (Runtime.currentWorker ?? 0) % Self.stacks }
+
+    /// The most recently released idle connection on this worker's stack, or
+    /// else on the next stack that has one.
     private func popIdle() -> Connection? {
-        idle.withLock { $0.popLast() }
+        let first = home
+        for i in 0..<Self.stacks {
+            if let connection = idle[(first + i) % Self.stacks].connections.withLock({ $0.popLast() }) {
+                return connection
+            }
+        }
+        return nil
     }
 
     private func drainIdle() {
-        let dropped = idle.withLock { connections in
-            defer { connections.removeAll() }
-            return connections
+        for stack in idle {
+            let dropped = stack.connections.withLock { connections in
+                defer { connections.removeAll() }
+                return connections
+            }
+            for connection in dropped { connection.close() }
         }
-        for connection in dropped { connection.close() }
     }
 }

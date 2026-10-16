@@ -351,7 +351,7 @@ private func decodeRow<Row: Decodable>(_ type: Row.Type, _ rows: PostgresRows, _
     case .onlyCell: return try decoding.onlyCell().decode(Row.self)
     case .readable(let reader):
         let cursor = PostgresRowReader(rows: rows, row: row, index: index)
-        return try reader.readRow(cursor) as! Row
+        return try PostgresFastPath.read(reader, cursor, as: Row.self)
     case .keyed: return try Row(from: decoding)
     }
 }
