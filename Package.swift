@@ -18,7 +18,7 @@ let vegaTraits: Set<Package.Dependency.Trait> = [
 // upToNextMinor: Vega is below 1.0, where a minor release may break.
 let vegaPackage: Package.Dependency = Context.environment["VEGA_PATH"].map {
     .package(path: $0, traits: vegaTraits)
-} ?? .package(url: "https://github.com/grepjava/vega.git", .upToNextMinor(from: "0.4.2"), traits: vegaTraits)
+} ?? .package(url: "https://github.com/grepjava/vega.git", .upToNextMinor(from: "0.5.0"), traits: vegaTraits)
 
 let package = Package(
     name: "VegaDB",

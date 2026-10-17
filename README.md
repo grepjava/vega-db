@@ -59,7 +59,7 @@ swift build --scratch-path ~/.cache/vega-db-build
 swift test  --scratch-path ~/.cache/vega-db-build
 ```
 
-vega-db takes [Vega](https://github.com/grepjava/vega) 0.4 from GitHub. To build against a local checkout instead, set `VEGA_PATH` to it (`VEGA_PATH=../vega swift build`). Like Vega, vega-db builds with `NonisolatedNonsendingByDefault`: its async functions run on the caller's executor.
+vega-db takes [Vega](https://github.com/grepjava/vega) 0.5 from GitHub. To build against a local checkout instead, set `VEGA_PATH` to it (`VEGA_PATH=../vega swift build`). Like Vega, vega-db builds with `NonisolatedNonsendingByDefault`: its async functions run on the caller's executor.
 
 In an application:
 
