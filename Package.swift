@@ -15,10 +15,9 @@ let vegaTraits: Set<Package.Dependency.Trait> = [
 
 /// Vega, by version; or, with VEGA_PATH set, a local checkout -- for working
 /// on both before a Vega release has what this package needs.
-// upToNextMinor: Vega is below 1.0, where a minor release may break.
 let vegaPackage: Package.Dependency = Context.environment["VEGA_PATH"].map {
     .package(path: $0, traits: vegaTraits)
-} ?? .package(url: "https://github.com/grepjava/vega.git", .upToNextMinor(from: "0.5.0"), traits: vegaTraits)
+} ?? .package(url: "https://github.com/grepjava/vega.git", from: "1.0.0", traits: vegaTraits)
 
 let package = Package(
     name: "VegaDB",
@@ -50,7 +49,7 @@ let package = Package(
         // PostgreSQL's wire protocol, startup and SCRAM, COPY, and binary and
         // text values, with no sockets. From Garuda's GarudaPostgres.
         .target(name: "VegaPostgresProtocol",
-                dependencies: [.product(name: "VegaTLS", package: "vega")],
+                dependencies: [.product(name: "VegaCrypto", package: "vega")],
                 swiftSettings: swiftSettings),
         // What a client tells a tracer about each round trip, in
         // OpenTelemetry's database terms, with no tracer's API.
@@ -59,13 +58,15 @@ let package = Package(
                 dependencies: ["VegaPool", "VegaRedisProtocol", "VegaDBTracing",
                                .product(name: "Vega", package: "vega"),
                                .product(name: "VegaIO", package: "vega"),
-                               .product(name: "VegaTLS", package: "vega")],
+                               .product(name: "VegaTLS", package: "vega"),
+                               .product(name: "VegaCrypto", package: "vega")],
                 swiftSettings: swiftSettings),
         .target(name: "VegaPostgres",
                 dependencies: ["VegaPool", "VegaPostgresProtocol", "VegaDBTracing",
                                .product(name: "Vega", package: "vega"),
                                .product(name: "VegaIO", package: "vega"),
-                               .product(name: "VegaTLS", package: "vega")],
+                               .product(name: "VegaTLS", package: "vega"),
+                               .product(name: "VegaCrypto", package: "vega")],
                 swiftSettings: swiftSettings),
         // The system's libsqlite3, opened with dlopen: no headers to build.
         .target(name: "CVegaSQLite", linkerSettings: [.linkedLibrary("dl", .when(platforms: [.linux]))]),

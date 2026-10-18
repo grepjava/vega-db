@@ -2,7 +2,7 @@
 // SCRAM-SHA-256 (RFC 5802, RFC 7677), the client half, as PostgreSQL uses it.
 //
 // Pure: messages in, messages out, and the nonce injectable so the RFC's own
-// test vector can be checked byte for byte. Crypto is VegaTLS's Digest --
+// test vector can be checked byte for byte. Crypto is VegaCrypto's Digest --
 // HMAC, SHA-256 and PBKDF2 from the TLS library, or CommonCrypto -- because a
 // hand-rolled HMAC is the kind of code that passes every test and leaks
 // through timing.
@@ -24,7 +24,7 @@
 // keyboard produces, is unaffected by it.
 //===----------------------------------------------------------------------===//
 
-import VegaTLS
+import VegaCrypto
 
 public enum ScramError: Error, Equatable, Sendable {
     /// A server message that is not the shape SCRAM gives it.
@@ -157,16 +157,16 @@ public struct ScramSHA256Client {
     }
 
     private func hmac(_ key: [UInt8], _ data: [UInt8]) throws(ScramError) -> [UInt8] {
-        do throws(DigestError) { return try Digest.hmacSHA256(key: key, data) } catch { throw .crypto }
+        do throws(CryptoError) { return try Digest.hmacSHA256(key: key, data) } catch { throw .crypto }
     }
 
     private func sha256(_ data: [UInt8]) throws(ScramError) -> [UInt8] {
-        do throws(DigestError) { return try Digest.sha256(data) } catch { throw .crypto }
+        do throws(CryptoError) { return try Digest.sha256(data) } catch { throw .crypto }
     }
 
     private func pbkdf2(_ password: [UInt8], salt: [UInt8],
                         iterations: Int) throws(ScramError) -> [UInt8] {
-        do throws(DigestError) {
+        do throws(CryptoError) {
             return try Digest.pbkdf2SHA256(password: password, salt: salt, iterations: iterations)
         } catch {
             throw .crypto

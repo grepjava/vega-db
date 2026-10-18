@@ -106,7 +106,7 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     static func connect(_ configuration: RedisConfiguration,
                         tls: TLSContext?) async throws(RedisClientError) -> RedisConnection {
         do {
-            return try await Runtime.timeout(configuration.timeout) { () async throws -> RedisConnection in
+            return try await Runtime.timeout(for: configuration.timeout) { () async throws -> RedisConnection in
                 try await open(configuration, tls: tls)
             }
         } catch let error as RedisClientError {
@@ -295,11 +295,11 @@ final class RedisConnection: PoolableConnection, @unchecked Sendable {
     /// Runs `body` with a deadline on its reads and writes. Past it the one
     /// waiting gives up, and fails as `timedOut`.
     ///
-    /// Not `Runtime.timeout`: that runs the body as a child task, which
+    /// Not `Runtime.timeout(for:)`: that runs the body as a child task, which
     /// costs more than the rest of a command's work on this side.
     private func bounded(_ timeout: Duration,
                          _ body: () async -> SendOutcome) async -> SendOutcome {
-        await Runtime.withIODeadline(timeout, body)
+        await Runtime.withIOTimeout(for: timeout, body)
     }
 
     /// Keeps track of what a command did to the session.

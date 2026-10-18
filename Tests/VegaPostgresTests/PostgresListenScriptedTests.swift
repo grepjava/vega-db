@@ -115,7 +115,7 @@ private final class FakePostgres: Sendable {
             buffer.clear()
             let n: Int
             do throws(IOError) {
-                n = try await Runtime.withIODeadline(.milliseconds(5)) { () async throws(IOError) -> Int in
+                n = try await Runtime.withIOTimeout(for: .milliseconds(5)) { () async throws(IOError) -> Int in
                     try await conn.read(into: &buffer)
                 }
             } catch .timedOut {

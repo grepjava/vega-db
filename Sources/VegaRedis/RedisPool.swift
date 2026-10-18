@@ -11,6 +11,7 @@
 
 import Vega
 import VegaPool
+import VegaCrypto
 import VegaTLS
 import VegaRedisProtocol
 
@@ -166,7 +167,7 @@ private struct TLSSetup: Sendable {
             result = nil
             return
         }
-        let roots: TLSConfiguration.TrustRoots = configuration.trustedCertificates.map { .certificates($0) } ?? .system
+        let roots: TrustRoots = configuration.trustedCertificates.map { .certificates($0) } ?? .system
         do throws(IOError) {
             result = .success(try TLSContext(.client(trustRoots: roots)))
         } catch {

@@ -13,6 +13,7 @@
 
 import Vega
 import VegaPool
+import VegaCrypto
 import VegaTLS
 import VegaPostgresProtocol
 
@@ -213,7 +214,7 @@ struct PostgresTLSSetup: Sendable {
             result = nil
             return
         }
-        let roots: TLSConfiguration.TrustRoots = configuration.trustedCertificates.map { .certificates($0) } ?? .system
+        let roots: TrustRoots = configuration.trustedCertificates.map { .certificates($0) } ?? .system
         do throws(IOError) {
             // PostgreSQL 17 and later refuse an ALPN protocol other than
             // their own.

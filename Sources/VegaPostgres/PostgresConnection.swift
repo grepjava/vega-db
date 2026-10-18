@@ -179,7 +179,7 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     static func connect(_ configuration: PostgresConfiguration,
                         tls: TLSContext?) async throws(PostgresClientError) -> PostgresConnection {
         do {
-            return try await Runtime.timeout(configuration.timeout) { () async throws -> PostgresConnection in
+            return try await Runtime.timeout(for: configuration.timeout) { () async throws -> PostgresConnection in
                 try await open(configuration, tls: tls)
             }
         } catch let error as PostgresClientError {
@@ -449,7 +449,7 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     func nextNotification(timeout: Duration) async throws(PostgresClientError) -> PostgresNotification? {
         var notification: PostgresNotification? = nil
         do throws(PostgresClientError) {
-            try await Runtime.withIODeadline(timeout) { () async throws(PostgresClientError) in
+            try await Runtime.withIOTimeout(for: timeout) { () async throws(PostgresClientError) in
                 try await self.receive { type, reader throws(PostgresClientError) in
                     switch type {
                     case UInt8(ascii: "A"):
@@ -482,7 +482,7 @@ final class PostgresConnection: PoolableConnection, @unchecked Sendable {
     /// Runs `body` with a deadline on its reads and writes: the
     /// configuration's timeout.
     private func bounded<T>(_ body: () async throws(PostgresClientError) -> T) async throws(PostgresClientError) -> T {
-        try await Runtime.withIODeadline(configuration.timeout, body)
+        try await Runtime.withIOTimeout(for: configuration.timeout, body)
     }
 
     private func send(_ bytes: [UInt8]) async throws(PostgresClientError) {
