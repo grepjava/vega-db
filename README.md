@@ -85,3 +85,7 @@ scripts/redis-test-servers.sh down
 | `VEGA_REDIS_SENTINEL` | `host:port:master:password` | sentinel discovery and a failover |
 
 The servers listen on 127.0.0.1 ports 46001–46006 and 46379–46392, outside the ranges Windows reserves for Hyper-V. The failover tests leave the promoted replicas as masters. The other tests don't depend on which node is master, so the suites can be run again without restarting the servers.
+
+## License
+
+MIT; see [LICENSE](LICENSE).
